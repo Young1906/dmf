@@ -26,7 +26,7 @@ class SparseMatrix(Dataset):
                 csv,
                 index="customer_id",
                 columns="sku",
-                values="qty"
+                values="amt"
         ).fillna(0.)
 
         self.u_dim, self.v_dim = self.Y.shape
@@ -44,11 +44,21 @@ class SparseMatrix(Dataset):
                 for k in sku:
                     y = self.Y.loc[c, k]
 
+                    """
+                    u, v = self.Y.loc[c, :], self.Y.loc[:,k]
+                    if (np.sum(np.array(u) > 0) < 5) or (np.sum(np.array(v) > 0) < 5):
+                        continue
+                    """
+                                
+
                     if y:
                         self.dataset.append((c, k , y)) 
+
                     else: 
                         # Randomly adding y=0 in to dataset
-                        if np.random.uniform() < .0005:
+                        
+                        if False:
+                            # np.random.uniform() < .0005:
                             self.dataset.append((c, k, y))
             with open("dataset.pkl", "wb") as f:
                 pickle.dump(self.dataset, f)
