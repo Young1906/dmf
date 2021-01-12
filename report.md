@@ -18,7 +18,12 @@ In which, $p_{u}, q_{i} \subset R^N$ are representation vectors of user $u^{th}$
 
 ## 2. Implementation
 ### 2.1 Data
+
+
+
 Dataset is extract from `Magento` database using this
+
+Move this to appendix
 ```sql
 SELECT 
     so.customer_id,
