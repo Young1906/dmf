@@ -8,11 +8,15 @@ from torch.nn import functional as F
 import torch.optim as optim
 from tqdm import tqdm
 import sys, pickle
-
+import numpy as np
 
 class SparseMatrix(Dataset):
     """
     Construct dataset from a very sparse matrix
+    # TODO:
+    Split dataset in to 2 set: train / validate
+    train set could be splitted in to train and test in training process
+    save the validate set to make report later
     """
     def __init__(self, csv_path, transform=None):
         
@@ -34,11 +38,13 @@ class SparseMatrix(Dataset):
         customer_id = self.Y.index
         sku = self.Y.columns
 
-        self.dataset = []
+        self.dataset = {"train":[], "validate":[]}
+        counter = 0;
 
         try:
-            with open("dataset.pkl", "rb") as f:
+            with open("cache.pkl", "rb") as f:
                 self.dataset = pickle.load(f)
+        
         except Exception as e:
             for c in tqdm(customer_id, leave=False):
                 for k in sku:
@@ -48,18 +54,28 @@ class SparseMatrix(Dataset):
                     u, v = self.Y.loc[c, :], self.Y.loc[:,k]
                     if (np.sum(np.array(u) > 0) < 5) or (np.sum(np.array(v) > 0) < 5):
                         continue
-                    """
-                                
+                    """   
 
                     if y:
-                        self.dataset.append((c, k , y)) 
+                        # Randomly split to train & validate
+                        if np.random.binomial(1, .9)==1:
+                            self.dataset["train"].append((c, k , y))
+                        else:
+                            self.dataset["validate"].append((c, k, y))
 
                     else: 
                         # Randomly adding y=0 in to dataset
-                        
-                        if np.random.uniform() < .0004:
+                        if False:
+                            #np.random.uniform() < .0004:
                             self.dataset.append((c, k, y))
-            with open("dataset.pkl", "wb") as f:
+                    
+                    counter +=1
+                    if counter > 1000:
+                        break
+                if counter > 1000:
+                    break
+
+            with open("cache.pkl", "wb") as f:
                 pickle.dump(self.dataset, f)
                 
 
@@ -71,7 +87,7 @@ class SparseMatrix(Dataset):
             idx = idx.tolist()
 
         # loading customer_id, sku, and Y_{u,v}
-        c, k, y = self.dataset[idx]
+        c, k, y = self.dataset["train"][idx]
         u, v = self.Y.loc[c,:], self.Y.loc[:,k]
         
         # masking interaction
@@ -86,7 +102,7 @@ class SparseMatrix(Dataset):
         y = np.array(y).astype(np.float32)
 
 
-        sample = {"u": u, "v":v, "y": y, "index":[c, k]}
+        sample = {"u": u, "v":v, "y": y}
 
 
         if self.transform:
@@ -95,11 +111,12 @@ class SparseMatrix(Dataset):
         return sample
 
 if __name__ == "__main__":
-    dataset = SparseMatrix("dataset.csv", transform=None)
+    dataset = SparseMatrix("dataset/dataset.csv", transform=None)
     dataloader = DataLoader(dataset,
-            batch_size = 4,
+            batch_size = 1,
             num_workers = 1,
             shuffle=True)
 
     for i, sample in enumerate(dataloader):
-        print(sample)
+        print(sample["u"].shape)
+        break
