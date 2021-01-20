@@ -1,24 +1,30 @@
-from DMF import SparseMatrix, SimpleNet
+from DMF import SparseMatrix, SimpleNet, ClipY, Skip
 import numpy as np
 from torch.utils.data import DataLoader, random_split
 from torch import nn
 import torch
 import torch.optim as optim
 from torch.utils.tensorboard import SummaryWriter
-
-
+from torch.autograd import Variable
+from torchvision import transforms
 
 if __name__ == "__main__":
 
     writer = SummaryWriter(flush_secs=10)
 
+    all_transform = transforms.Compose([ 
+        ClipY()
+    ])
+
     # Load dataset
-    dataset = SparseMatrix("dataset/dataset.csv",
-        "customer_id", "sku", "qty"
+    dataset = SparseMatrix("dataset/dataset02.csv",
+        "customer_id", "sku", "qty", transform = all_transform
     )
+
+
     
     # Train test split
-    train_size = int(len(dataset)*.99)
+    train_size = int(len(dataset)*.95)
     test_size  = len(dataset) - train_size
 
     train, test = random_split(dataset, [train_size, test_size])
@@ -40,32 +46,34 @@ if __name__ == "__main__":
     device = torch.device("cuda:0")
 
     # Init network
-    net = SimpleNet(dataset.u_dim, dataset.v_dim, 20)
+    net = Skip(dataset.u_dim, dataset.v_dim, 100)
     net.to(device)
+    params = net.parameters()
     
     # And loss
-    crit = nn.BCELoss()
-    optimizer = optim.SGD(net.parameters(),
-        lr=1e-3, 
-        momentum=.9
+    crit = nn.MSELoss()
+    optimizer = optim.Adam(net.parameters(),
+        lr=1e-4, 
     )
     gstep = 0
     for e in range(5):
         for i, sample in enumerate(train_loader):
             rloss = 0.
-            racc = 0.
+            # racc = 0.
 
             u, v, y = sample["u"].to(device), sample["v"].to(device), sample["y"].to(device)
             
             optimizer.zero_grad()
             out = net(u, v)
 
-            with torch.no_grad():
-                pred = out.cpu().numpy() > .5
-                racc += np.mean(pred == y.cpu().numpy())
+            # l2 regulization term
+            reg = Variable(torch.tensor(0.), requires_grad = True)
 
+            for param in params:
+                reg = reg + torch.sum(param * param)
 
-            loss = crit(out, y)
+            # print(out.dtype, y.dtype)
+            loss = crit(out, y) + .1 * reg
             loss.backward()
 
             optimizer.step()
@@ -75,9 +83,9 @@ if __name__ == "__main__":
 
             if gstep % 200 == 0:
                 writer.add_scalar("Loss/Train", rloss, gstep)
-                writer.add_scalar("Acc/Train", racc, gstep)
+                # writer.add_scalar("Acc/Train", racc, gstep)
                 rloss = 0
-                racc = 0
+                # racc = 0
 
                 if gstep % 1000 == 0:
                     with torch.no_grad():
@@ -92,10 +100,10 @@ if __name__ == "__main__":
                             loss_i = loss.item()
 
                             vloss+=loss_i/test_size
-                            vacc += np.sum(pred == y.cpu().numpy())/test_size
+                            # vacc += np.sum(pred == y.cpu().numpy())/test_size
 
-                            writer.add_scalar("Loss/validate", vloss, gstep)
-                            writer.add_scalar("Acc/validate", vacc, gstep)
+                        writer.add_scalar("Loss/validate", vloss, gstep)
+                        # writer.add_scalar("Acc/validate", vacc, gstep)
     writer.close()
 
 

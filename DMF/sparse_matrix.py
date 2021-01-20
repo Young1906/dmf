@@ -1,3 +1,4 @@
+import random
 import torch
 import pandas as pd
 from torch.utils.data import Dataset
@@ -22,6 +23,9 @@ class SparseMatrix(Dataset):
         # Transform
         self.transform = transform
 
+        # fnname:
+        fn_name = csv_path.split("/")[-1].replace(".", "_")
+
         # Read the data
         csv = pd.read_csv(csv_path)
         
@@ -42,48 +46,55 @@ class SparseMatrix(Dataset):
 
 
         try:
-            with open("cache.pkl", "rb") as f:
-                self.pos_samples, self.neq_samples = pickle.load(f)
+            with open(f"cache/{fn_name}_cache.pkl", "rb") as f:
+                self.train, self.test = pickle.load(f)
         
         except OSError:
             # Positive interaction
-            self.pos_samples = []
+            pos_samples = []
+            
             for _, row in tqdm(csv.iterrows()):
-                u, v, r = row.values
+                u, v, _, r = row.values
                 u, v = int(u), int(v)
-                self.pos_samples.append((u, v, r))
+                pos_samples.append((u, v, r))
 
             # Randomly sample negative interaction
             N_neg = int(N_Interaction * neg_r * self.sparsity)
             neq_u, neq_v = np.random.choice(self.users, N_neg), np.random.choice(self.items, N_neg)
-            self.neq_samples = list(zip(neq_u, neq_v, [None]*N_neg))
-            
+            neq_samples = list(zip(neq_u, neq_v, [0]*N_neg))
+
+            # All samples = pos + neg samples
+            samples = [*pos_samples, *neq_samples]
+            n_sample = len(samples)
+
+            # Split
+            test_size = int(n_sample * .15)
+            random.shuffle(samples)
+            self.test = samples[:test_size]
+            self.train = samples[test_size:]
+
             # Cache this
-            with open("cache.pkl", "wb") as f:
-                pickle.dump((self.pos_samples, self.neq_samples), f)
-
-
-        # All samples = pos + neg samples
-        self.samples = [*self.pos_samples, *self.neq_samples]
+            with open(f"cache/{fn_name}_cache.pkl", "wb") as f:
+                pickle.dump((self.train, self.test), f)
 
     def __len__(self):
-        return len(self.samples)
+        return len(self.train)
 
     def __getitem__(self, idx):
         if torch.is_tensor(idx):
             idx = idx.tolist()
         
-        i, j, y = self.samples[idx]
+        i, j, y = self.train[idx]
 
         # Vector from interaction matrix
         u, v = self.Y.loc[i,:], self.Y.loc[:, j]
 
         u = np.array(u).astype(np.float32)
         v = np.array(v).astype(np.float32)
+        y = np.array(y).astype(np.float32)
         
         # Implicit feedback y = 1 if r_ij > 0 else 0
-        y = 1. if y else 0.
-        y = torch.tensor(y, dtype=torch.float32)
+        # y = 1. if y else 0.
         
         sample = {"u": u, "v": v, "y": y}
 

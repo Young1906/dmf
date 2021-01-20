@@ -3,3 +3,7 @@
 **/runs
 **/.ipynb_checkpoints
 **/__pycache__
+**/cache
+**/*.csv
+**/*.pth
+**/*.pkl
